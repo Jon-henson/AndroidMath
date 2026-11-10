@@ -1,0 +1,89 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.numberheroes.app'
+    compileSdk 36
+
+    defaultConfig {
+        // Change this to your own unique ID before publishing (it can never change after the first upload).
+        applicationId "com.numberheroes.app"
+        minSdk 24
+        targetSdk 36
+        // Raise versionCode by 1 for every upload to Google Play.
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            // Used by the GitHub workflow when signing secrets are set. Android Studio's
+            // "Generate Signed App Bundle" wizard does not need this.
+            def ks = System.getenv("NH_KEYSTORE")
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("NH_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("NH_KEY_ALIAS")
+                keyPassword System.getenv("NH_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv("NH_KEYSTORE")) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    implementation 'androidx.webkit:webkit:1.12.1'
+}
+
+// The app has no internet permission, so its fonts are bundled. This downloads them once at
+// build time (open-source fonts from Fontsource). If the download fails, the app still builds
+// and simply uses the phone's own fonts.
+def fontDir = file("src/main/assets/www/fonts")
+def fontFiles = [
+    'atkinson-hyperlegible-latin-400-normal.woff2',
+    'atkinson-hyperlegible-latin-700-normal.woff2',
+    'atkinson-hyperlegible-latin-400-italic.woff2',
+    'baloo-2-latin-500-normal.woff2',
+    'baloo-2-latin-600-normal.woff2',
+    'baloo-2-latin-700-normal.woff2',
+    'baloo-2-latin-800-normal.woff2'
+]
+tasks.register('fetchFonts') {
+    doLast {
+        fontDir.mkdirs()
+        fontFiles.each { name ->
+            def f = new File(fontDir, name)
+            if (!f.exists() || f.length() == 0) {
+                def pkg = name.startsWith('baloo') ? 'baloo-2' : 'atkinson-hyperlegible'
+                try {
+                    URI.create("https://cdn.jsdelivr.net/npm/@fontsource/${pkg}@5/files/${name}").toURL().withInputStream { i ->
+                        f.withOutputStream { it << i }
+                    }
+                    println "Downloaded font ${name}"
+                } catch (Exception e) {
+                    f.delete()
+                    logger.warn("Could not download font ${name} (${e.message}). The app will use system fonts.")
+                }
+            }
+        }
+    }
+}
+tasks.named('preBuild') { dependsOn 'fetchFonts' }
