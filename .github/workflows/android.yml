@@ -1,0 +1,52 @@
+name: Build Android app
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build test app (APK)
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload test app
+        uses: actions/upload-artifact@v4
+        with:
+          name: number-heroes-test-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Runs only after you add the four signing secrets (see README).
+      - name: Build signed Play Store bundle (AAB)
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          NH_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          NH_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          NH_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export NH_KEYSTORE="$RUNNER_TEMP/upload.jks"
+          ./gradlew bundleRelease
+
+      - name: Upload Play Store bundle
+        if: env.KEYSTORE_BASE64 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: number-heroes-play-bundle
+          path: app/build/outputs/bundle/release/app-release.aab
